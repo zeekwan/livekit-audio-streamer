@@ -61,6 +61,30 @@
       <h2>Local Preview</h2>
       <audio id="local-preview" controls></audio>
     </div>
+
+    <!-- Text-to-Speech Section -->
+    <div class="tts-section">
+      <h2>2a. Text-to-Speech</h2>
+      <div class="form-group">
+        <textarea id="tts-text" placeholder="Enter text to speak..." rows="4"></textarea>
+        <select id="tts-voice">
+          <option value="alloy">Alloy</option>
+          <option value="echo">Echo</option>
+          <option value="fable">Fable</option>
+          <option value="onyx">Onyx</option>
+          <option value="nova">Nova</option>
+          <option value="shimmer">Shimmer</option>
+          <option value="coral">Coral</option>
+          <option value="sage">Sage</option>
+          <option value="ash">Ash</option>
+          <option value="ballad">Ballad</option>
+        </select>
+        <button id="speak-button" disabled>Speak to Room</button>
+        <button id="stop-speech-button" disabled>Stop Speaking</button>
+      </div>
+      <div id="tts-status" class="status">Ready</div>
+    </div>
+
   </div>
 
   <!-- Scripts -->
