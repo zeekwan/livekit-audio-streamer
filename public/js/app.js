@@ -23,12 +23,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const stopSpeechButton = document.getElementById('stop-speech-button');
   const ttsStatus = document.getElementById('tts-status');
   
+  const savedTtsPreview = document.getElementById('saved-tts-preview');
+  const savedTtsPreviewToggle = document.getElementById('saved-tts-preview-toggle');
+  const savedTtsStatus = document.getElementById('saved-tts-status');
+  const playSavedTtsButton = document.getElementById('play-saved-tts-button');
+  const stopSavedTtsButton = document.getElementById('stop-saved-tts-button');
+
   // LiveKit Room
   let room = null;
   let isConnected = false;
 
   // TTS state
   let isSpeaking = false;
+  let currentTtsId = null;
   
   // File tracking
   let currentFileId = null;
@@ -336,10 +343,22 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error('Failed to start TTS');
       }
       
+      const data = await response.json();
+      if (!data.tts_id) {
+        throw new Error('No TTS ID returned from server');
+      }
+      
+      currentTtsId = data.tts_id;
+      
       isSpeaking = true;
       speakButton.disabled = true;
       stopSpeechButton.disabled = false;
+      playSavedTtsButton.disabled = false;
       updateStatus(ttsStatus, 'Speaking...', 'listening');
+      updateStatus(savedTtsStatus, 'TTS saved', 'success');
+      
+      // Set up the preview audio source
+      savedTtsPreview.src = `/temp/temp_${currentTtsId}_tts.wav`;
       
     } catch (error) {
       log(`TTS error: ${error.message}`, 'error');
@@ -352,8 +371,29 @@ document.addEventListener('DOMContentLoaded', () => {
   
   async function stopTTS() {
     try {
-      // For now, we don't have a stop endpoint, but we can add one later
-      // For now, just update the UI state
+      if (!isConnected) {
+        log('Not connected to room', 'error');
+        return;
+      }
+      
+      log('Stopping TTS...');
+      updateStatus(ttsStatus, 'Stopping...', 'processing');
+      
+      // Call the backend to stop TTS
+      const response = await fetch('/stop-audio', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          room_name: roomNameInput.value.trim() || 'audio-room'
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to stop TTS');
+      }
+      
       isSpeaking = false;
       speakButton.disabled = false;
       stopSpeechButton.disabled = true;
@@ -362,7 +402,69 @@ document.addEventListener('DOMContentLoaded', () => {
       
     } catch (error) {
       log(`Stop TTS error: ${error.message}`, 'error');
+      updateStatus(ttsStatus, 'Stop failed', 'error');
     }
+  }
+
+  // Saved TTS Functions
+  async function playSavedTTS() {
+    try {
+      if (!isConnected) {
+        log('Not connected to room', 'error');
+        return;
+      }
+      
+      if (!currentTtsId) {
+        log('No TTS saved', 'error');
+        return;
+      }
+      
+      log('Starting saved TTS playback...');
+      updateStatus(savedTtsStatus, 'Playing...', 'listening');
+      
+      // Request playback from server
+      const response = await fetch(PLAY_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          room_name: roomNameInput.value.trim() || 'audio-room',
+          file_id: currentTtsId
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to start playback');
+      }
+      
+      isPlaying = true;
+      stopSavedTtsButton.disabled = false;
+      playSavedTtsButton.disabled = true;
+      
+      // Play locally only if toggle is enabled
+      if (savedTtsPreviewToggle.checked) {
+        savedTtsPreview.play();
+      }
+      
+    } catch (error) {
+      log(`Playback error: ${error.message}`, 'error');
+      updateStatus(savedTtsStatus, 'Playback failed', 'error');
+    }
+  }
+  
+  function stopSavedTTS() {
+    if (savedTtsPreview) {
+      savedTtsPreview.pause();
+      savedTtsPreview.currentTime = 0;
+    }
+    
+    isPlaying = false;
+    stopSavedTtsButton.disabled = true;
+    playSavedTtsButton.disabled = false;
+    
+    updateStatus(savedTtsStatus, 'Stopped', '');
+    log('Saved TTS playback stopped');
   }
 
   // Disconnect from the room
@@ -428,6 +530,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   speakButton.addEventListener('click', startTTS);
   stopSpeechButton.addEventListener('click', stopTTS);
+  playSavedTtsButton.addEventListener('click', playSavedTTS);
+  stopSavedTtsButton.addEventListener('click', stopSavedTTS);
+
+  // Handle toggle changes
+  savedTtsPreviewToggle.addEventListener('change', () => {
+    if (savedTtsPreviewToggle.checked && isPlaying) {
+      savedTtsPreview.play();
+    } else if (!savedTtsPreviewToggle.checked) {
+      savedTtsPreview.pause();
+    }
+  });
 
   // Handle page unload
   window.addEventListener('beforeunload', () => {
@@ -439,4 +552,11 @@ document.addEventListener('DOMContentLoaded', () => {
   updateStatus(fileStatus, 'No file selected', '');
   updateStatus(playbackStatus, 'Ready', '');
   updateStatus(ttsStatus, 'Ready', '');
+  updateStatus(savedTtsStatus, 'Ready', '');
+
+  // Initialize button states
+  speakButton.disabled = !isConnected;
+  stopSpeechButton.disabled = true;
+  playSavedTtsButton.disabled = true;
+  stopSavedTtsButton.disabled = true;
 });

@@ -78,7 +78,23 @@
       </div>
       <div id="tts-status" class="status">Ready</div>
     </div>
-    
+
+    <!-- Saved TTS Playback Section -->
+    <div class="saved-tts-section">
+      <h2>2b. Saved TTS Playback</h2>
+      <div class="form-group">
+        <button id="play-saved-tts-button" disabled>Play Saved TTS</button>
+        <button id="stop-saved-tts-button" disabled>Stop Saved TTS</button>
+        <div class="toggle-container">
+          <label class="switch">
+            <input type="checkbox" id="saved-tts-preview-toggle" checked>
+            <span class="slider"></span>
+          </label>
+          <span class="toggle-label">Local Preview</span>
+        </div>
+      </div>
+      <div id="saved-tts-status" class="status">No TTS saved</div>
+    </div>
 
     <!-- Log Section -->
     <div class="conversation-container">
