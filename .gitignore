@@ -47,3 +47,6 @@ htmlcov/
 
 # Specific temporary files seen in your screenshot
 temp_*
+
+# macOS specific
+.DS_Store
