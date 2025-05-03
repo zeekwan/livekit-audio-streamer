@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiveKit Audio File Streaming</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <!-- Add LiveKit client library -->
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>LiveKit Audio File Streaming</h1>
+    
+    <!-- Room Connection Section -->
+    <div class="connection-section">
+      <h2>1. Connect to Room</h2>
+      <div class="form-group">
+        <input type="text" id="room-name" placeholder="Room Name (default: audio-room)" value="audio-room">
+        <input type="text" id="participant-name" placeholder="Your Name (optional)">
+        <button id="connect-button">Connect to Room</button>
+      </div>
+      <div id="connection-status" class="status">Not connected</div>
+    </div>
+
+    <!-- Audio File Section -->
+    <div class="audio-section">
+      <h2>2. Select Audio File</h2>
+      <div class="form-group">
+        <input type="file" id="audio-file" accept="audio/*">
+        <button id="upload-button" disabled>Upload File</button>
+      </div>
+      <div id="file-status" class="status">No file selected</div>
+    </div>
+
+    <!-- Playback Section -->
+    <div class="playback-section">
+      <h2>3. Playback Control</h2>
+      <div class="controls">
+        <button id="play-button" disabled>Play to Room</button>
+        <button id="stop-button" disabled>Stop</button>
+        <div class="toggle-container">
+          <label class="switch">
+            <input type="checkbox" id="local-playback-toggle" checked>
+            <span class="slider"></span>
+          </label>
+          <span class="toggle-label">Local Preview</span>
+        </div>
+      </div>
+      <div id="playback-status" class="status">Ready</div>
+    </div>
+
+    <!-- Log Section -->
+    <div class="conversation-container">
+      <h2>Log</h2>
+      <div id="conversation" class="conversation"></div>
+    </div>
+    
+    <!-- Local Preview -->
+    <div class="preview-section">
+      <h2>Local Preview</h2>
+      <audio id="local-preview" controls></audio>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/app.js"></script>
+
+  <style>
+    /* ... existing styles ... */
+    
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-left: 10px;
+    }
+    
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 24px;
+    }
+    
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 24px;
+    }
+    
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 4px;
+      bottom: 4px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    
+    input:checked + .slider {
+      background-color: #2196F3;
+    }
+    
+    input:checked + .slider:before {
+      transform: translateX(26px);
+    }
+    
+    .toggle-label {
+      font-size: 14px;
+      color: #666;
+    }
+  </style>
+</body>
+</html>

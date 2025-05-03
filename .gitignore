@@ -1,0 +1,49 @@
+# Ignore environment files
+.env
+
+# Python-specific ignores
+__pycache__/
+*.pyc
+*.pyd
+*.so
+
+# Virtual environments
+# This is a common pattern for virtual environment directories
+venv/
+.venv/
+env/
+.env/
+
+# Dependencies
+# Ignore the typical directory for dependencies installed by pip
+# if you're not putting your venv there
+# Lib/ # uncomment if using a venv named "Lib" on Windows inside the project
+
+# Ignore build artifacts
+dist/
+build/
+*.egg-info/
+.nox/
+.tox/
+
+# Testing and Linting
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
+coverage/
+htmlcov/
+.coverage
+
+# Editor/IDE specific files
+.vscode/ # VS Code settings
+.idea/ # PyCharm/IntelliJ IDEA settings
+*.swp    # vim swap files
+*.swo    # vim swap files
+*~       # backup files
+.DS_Store # macOS specific
+
+# Jupyter Notebook specific ignores
+.ipynb_checkpoints
+
+# Specific temporary files seen in your screenshot
+temp_*

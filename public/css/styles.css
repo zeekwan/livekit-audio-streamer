@@ -1,0 +1,151 @@
+ /* Base styles */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f5f7fa;
+    padding: 20px;
+  }
+  
+  .container {
+    max-width: 1000px;
+    margin: 0 auto;
+    background-color: #fff;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+  }
+  
+  h1 {
+    text-align: center;
+    margin-bottom: 30px;
+    color: #2c3e50;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 10px;
+  }
+  
+  h2 {
+    margin-top: 20px;
+    margin-bottom: 15px;
+    color: #3498db;
+    font-size: 1.2rem;
+  }
+  
+  /* Section styles */
+  .connection-section,
+  .audio-section,
+  .playback-section,
+  .conversation-container,
+  .preview-section {
+    margin-bottom: 30px;
+    padding: 15px;
+    border-radius: 5px;
+    background-color: #f8f9fa;
+    border-left: 4px solid #3498db;
+  }
+  
+  /* Form elements */
+  .form-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+  }
+  
+  input[type="text"],
+  input[type="file"] {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    flex: 1;
+    min-width: 200px;
+  }
+  
+  button {
+    padding: 10px 15px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+  }
+  
+  button:hover {
+    background-color: #2980b9;
+  }
+  
+  button:disabled {
+    background-color: #95a5a6;
+    cursor: not-allowed;
+  }
+  
+  /* Status indicators */
+  .status {
+    padding: 10px;
+    border-radius: 4px;
+    margin-top: 10px;
+    font-size: 0.9rem;
+  }
+  
+  .status.processing {
+    background-color: #f39c12;
+    color: white;
+  }
+  
+  .status.success {
+    background-color: #2ecc71;
+    color: white;
+  }
+  
+  .status.error {
+    background-color: #e74c3c;
+    color: white;
+  }
+  
+  .status.listening {
+    background-color: #3498db;
+    color: white;
+  }
+  
+  /* Conversation log */
+  .conversation {
+    height: 200px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    padding: 10px;
+    border-radius: 5px;
+    background-color: #fff;
+    font-family: monospace;
+    font-size: 0.9rem;
+  }
+  
+  .log-entry {
+    margin-bottom: 5px;
+    padding: 3px 0;
+    border-bottom: 1px solid #eee;
+  }
+  
+  .log-entry.info {
+    color: #2c3e50;
+  }
+  
+  .log-entry.warn {
+    color: #f39c12;
+  }
+  
+  .log-entry.error {
+    color: #e74c3c;
+  }
+  
+  /* Preview section */
+  .preview-section audio {
+    width: 100%;
+    margin-top: 10px;
+  }
