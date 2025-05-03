@@ -72,7 +72,7 @@ class TTSRequest(BaseModel):
     text: str
     voice: str = "alloy"
     model: str = "gpt-4o-mini-tts"
-    instructions: str = ""
+    instructions: str = "Speak in a somber and depressed tone"
 
 class AudioBufferManager:
     def __init__(self, room_name, audio_source, sample_rate, num_channels=1):
@@ -360,6 +360,7 @@ async def stream_tts_to_room(room_name: str, text: str, voice: str = "alloy", mo
         
         # Create and publish a local audio track
         track = rtc.LocalAudioTrack.create_audio_track("tts-stream", audio_source)
+        publication = None
         
         try:
             # Publish the track
@@ -473,12 +474,13 @@ async def stream_tts_to_room(room_name: str, text: str, voice: str = "alloy", mo
         finally:
             # Clean up resources
             try:
-                if track:
-                    await room.local_participant.unpublish_track(track)
-                    track.stop()
+                if publication:
+                    await publication.unpublish()
                     logger.info(f"TTS track unpublished from room {room_name}")
+                if track:
+                    track.stop()
             except Exception as e:
-                logger.error(f"Error unpublishing TTS track: {e}")
+                logger.error(f"Error cleaning up TTS track: {e}")
             
             try:
                 if audio_source:
