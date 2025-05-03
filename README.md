@@ -33,11 +33,7 @@ A simple web application that allows you to upload and stream audio files to Liv
    LIVEKIT_WS_URL=wss://your-livekit-server-url
    LIVEKIT_API_KEY=your-api-key
    LIVEKIT_API_SECRET=your-api-secret
-   ```
-
-5. **Create directory structure** (if not already present):
-   ```bash
-   mkdir -p public/css public/js
+   PORT=3001
    ```
 
 ### Running the Application
