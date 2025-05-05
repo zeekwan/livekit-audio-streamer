@@ -149,3 +149,36 @@
     width: 100%;
     margin-top: 10px;
   }
+
+.tts-section {
+  margin-bottom: 30px;
+  padding: 15px;
+  border-radius: 5px;
+  background-color: #f8f9fa;
+  border-left: 4px solid #28a745;
+}
+
+textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  font-family: inherit;
+  resize: vertical;
+  margin-bottom: 10px;
+}
+
+select {
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  margin-right: 10px;
+}
+
+#stop-button {
+  background-color: #dc3545;
+}
+
+#stop-button:hover {
+  background-color: #c82333;
+}

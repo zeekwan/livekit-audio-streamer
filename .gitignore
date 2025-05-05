@@ -45,8 +45,15 @@ htmlcov/
 # Jupyter Notebook specific ignores
 .ipynb_checkpoints
 
-# Specific temporary files seen in your screenshot
+# Temporary files and directories
+temp/
 temp_*
+*.wav
+*.mp3
+*.ogg
+*.aac
+*.flac
+*.pcm
 
 # macOS specific
 .DS_Store

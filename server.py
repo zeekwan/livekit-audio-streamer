@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# Simplified Audio Streaming Server Using LiveKit's Native Features
-
 import os
 import asyncio
 import uuid
@@ -13,6 +10,11 @@ import uvicorn
 from dotenv import load_dotenv
 import logging
 from typing import Dict, Optional
+import time
+from openai import OpenAI, AsyncOpenAI
+import io
+import tempfile
+from openai.helpers import LocalAudioPlayer
 
 # Import LiveKit Python SDK components
 from livekit import rtc, api
@@ -39,7 +41,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# LiveKit configuration
+# LiveKit configuration & open AI config
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 LIVEKIT_URL = os.getenv("LIVEKIT_WS_URL")
 LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
@@ -64,6 +67,13 @@ class PlaybackRequest(BaseModel):
     room_name: str
     file_id: str
 
+class TTSRequest(BaseModel):
+    room_name: str
+    text: str
+    voice: str = "alloy"
+    model: str = "gpt-4o-mini-tts"
+    instructions: str = "Speak in a somber and depressed tone"
+
 class AudioBufferManager:
     def __init__(self, room_name, audio_source, sample_rate, num_channels=1):
         self.room_name = room_name
@@ -72,9 +82,9 @@ class AudioBufferManager:
         self.num_channels = num_channels
         
         # Buffer management settings
-        self.target_buffer = 0.1  # 100ms target buffer
-        self.min_buffer = 0.05    # 50ms minimum buffer
-        self.max_buffer = 0.3     # 300ms maximum buffer
+        self.target_buffer = 0.2  # 100ms target buffer
+        self.min_buffer = 0.1    # 50ms minimum buffer
+        self.max_buffer = 0.4     # 300ms maximum buffer
         
         # Statistics
         self.frames_sent = 0
@@ -220,40 +230,68 @@ async def play_audio_to_room(room_name: str, file_id: str):
         room = active_rooms[room_name]
         audio_data = audio_files[file_id]
         
-        # Create an audio source with the correct sample rate
+        # Target sample rate (standard for WebRTC)
+        target_sample_rate = 48000
+        
+        # Create an audio source with the target sample rate
         audio_source = rtc.AudioSource(
-            sample_rate=audio_data["sample_rate"],
+            sample_rate=target_sample_rate,
             num_channels=1,
             queue_size_ms=1000  # 1 second buffer
         )
         
         # Create and publish a local audio track
         track = rtc.LocalAudioTrack.create_audio_track("audio-file", audio_source)
+        publication = None
         
         try:
             # Publish the track and wait for it to be established
             publication = await room.local_participant.publish_track(track)
             logger.info(f"Track published to room {room_name}")
             
-            # Get the audio data and sample rate
+            # Get the audio data and original sample rate
             data = audio_data["data"]
-            sample_rate = audio_data["sample_rate"]
+            source_sample_rate = audio_data["sample_rate"]
             
-            # Calculate the chunk size for 20ms segments (better for buffer management)
-            # 20ms is a good compromise for smooth playback
+            if data is None:
+                # Load the data from file if not already loaded
+                data, source_sample_rate = sf.read(audio_data["file_path"])
+                # Convert to mono if stereo
+                if len(data.shape) > 1 and data.shape[1] > 1:
+                    data = np.mean(data, axis=1)
+                audio_data["data"] = data
+                audio_data["sample_rate"] = source_sample_rate
+            
+            # Create a resampler to convert from source sample rate to target sample rate
+            resampler = rtc.AudioResampler(
+                input_rate=source_sample_rate,
+                output_rate=target_sample_rate,
+                num_channels=1,
+                quality=rtc.AudioResamplerQuality.HIGH
+            )
+            
+            # Calculate the chunk size for 20ms segments at the source sample rate
             chunk_duration_ms = 20
-            chunk_size = int(sample_rate * chunk_duration_ms / 1000)
+            chunk_size = int(source_sample_rate * chunk_duration_ms / 1000)
             chunks = [data[i:i + chunk_size] for i in range(0, len(data), chunk_size)]
             
             logger.info(f"Starting audio playback from file ID {file_id} in room {room_name}")
-            logger.info(f"File details: {len(chunks)} chunks at {sample_rate}Hz, {chunk_duration_ms}ms per chunk")
+            logger.info(f"File details: {len(chunks)} chunks at {source_sample_rate}Hz → {target_sample_rate}Hz, {chunk_duration_ms}ms per chunk")
             
-            # Create a buffer manager
-            buffer_manager = AudioBufferManager(
-                room_name=room_name,
-                audio_source=audio_source, 
-                sample_rate=sample_rate
+            # Pre-fill the buffer with silence
+            silence_duration = 1  # 100ms of silence
+            silence_samples = int(target_sample_rate * silence_duration)
+            silence = np.zeros(silence_samples, dtype=np.float32)
+            
+            # Convert silence to AudioFrame and send it
+            silence_int16 = (silence * 32767).astype(np.int16).tobytes()
+            silence_frame = rtc.AudioFrame(
+                data=silence_int16,
+                sample_rate=target_sample_rate,
+                num_channels=1,
+                samples_per_channel=len(silence)
             )
+            await audio_source.capture_frame(silence_frame)
             
             # Stream chunks with managed buffering
             for i, chunk in enumerate(chunks):
@@ -261,19 +299,37 @@ async def play_audio_to_room(room_name: str, file_id: str):
                 if len(chunk) < chunk_size:
                     chunk = np.pad(chunk, (0, chunk_size - len(chunk)))
                 
-                # Calculate chunk duration in seconds
-                chunk_duration = len(chunk) / sample_rate
+                # Convert numpy array to AudioFrame
+                int16_data = (chunk * 32767).astype(np.int16).tobytes()
+                input_frame = rtc.AudioFrame(
+                    data=int16_data,
+                    sample_rate=source_sample_rate,
+                    num_channels=1,
+                    samples_per_channel=len(chunk)
+                )
                 
-                # Send chunk and get recommended sleep time
-                sleep_time = await buffer_manager.send_chunk(chunk, chunk_duration)
+                # Resample to target sample rate
+                resampled_frames = resampler.push(input_frame)
                 
-                # Sleep for the recommended duration
-                await asyncio.sleep(sleep_time)
+                # Process each resampled frame
+                for frame in resampled_frames:
+                    # Send the frame directly to the audio source without numpy conversion
+                    await audio_source.capture_frame(frame)
+                    
+                    # To maintain timing, sleep a small amount
+                    # This is based on frame duration (samples / rate)
+                    frame_duration = frame.samples_per_channel / target_sample_rate
+                    await asyncio.sleep(frame_duration * 0.5)  # Sleep for half the frame duration
                 
                 # Log progress occasionally
                 if i % 500 == 0 and i > 0:
                     progress_percent = (i / len(chunks)) * 100
                     logger.info(f"Playback progress: {i}/{len(chunks)} chunks ({progress_percent:.1f}%)")
+            
+            # Flush the resampler for any remaining data
+            flush_frames = resampler.flush()
+            for frame in flush_frames:
+                await audio_source.capture_frame(frame)
             
             logger.info(f"All chunks sent for file ID {file_id}, waiting for buffer to empty")
             
@@ -287,12 +343,13 @@ async def play_audio_to_room(room_name: str, file_id: str):
         finally:
             # Always unpublish the track and clean up resources
             try:
-                if track:
-                    await room.local_participant.unpublish_track(track)
-                    track.stop()
+                if publication:
+                    await publication.unpublish()
                     logger.info(f"Track unpublished from room {room_name}")
+                if track:
+                    track.stop()
             except Exception as e:
-                logger.error(f"Error unpublishing track: {e}")
+                logger.error(f"Error cleaning up track: {e}")
             
             try:
                 if audio_source:
@@ -305,6 +362,185 @@ async def play_audio_to_room(room_name: str, file_id: str):
         
     except Exception as e:
         logger.error(f"Error playing audio to room: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+async def stream_tts_to_room(room_name: str, text: str, voice: str = "alloy", model: str = "gpt-4o-mini-tts", instructions: str = ""):
+    """Stream text-to-speech to a LiveKit room using LiveKit's resampler"""
+    if room_name not in active_rooms:
+        logger.error(f"Room not found: {room_name}")
+        return False
+    
+    try:
+        room = active_rooms[room_name]
+        
+        # Initialize OpenAI client
+        client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+        
+        # Create an audio source at the target sample rate (48kHz is standard for WebRTC)
+        target_sample_rate = 48000
+        audio_source = rtc.AudioSource(
+            sample_rate=target_sample_rate,
+            num_channels=1,
+            queue_size_ms=1000
+        )
+        
+        # Create and publish a local audio track
+        track = rtc.LocalAudioTrack.create_audio_track("tts-stream", audio_source)
+        publication = None
+        
+        # Create a file to save the TTS audio
+        tts_id = str(uuid.uuid4())
+        tts_filename = f"temp_{tts_id}_tts.wav"
+        tts_filepath = os.path.join("temp", tts_filename)
+        os.makedirs("temp", exist_ok=True)
+        
+        # Open the file for writing
+        with sf.SoundFile(tts_filepath, mode='w', samplerate=target_sample_rate, channels=1, subtype='PCM_16') as tts_file:
+            try:
+                # Publish the track
+                publication = await room.local_participant.publish_track(track)
+                logger.info(f"TTS track published to room {room_name}")
+                
+                # Create a buffer manager
+                buffer_manager = AudioBufferManager(
+                    room_name=room_name,
+                    audio_source=audio_source,
+                    sample_rate=target_sample_rate
+                )
+                
+                # Create a resampler to convert from OpenAI's 24kHz to our target 48kHz
+                # Use HIGH quality for better audio
+                resampler = rtc.AudioResampler(
+                    input_rate=24000,  # OpenAI PCM is 24kHz
+                    output_rate=target_sample_rate,
+                    num_channels=1,
+                    quality=rtc.AudioResamplerQuality.HIGH
+                )
+                
+                # Create a streaming response from OpenAI
+                async with client.audio.speech.with_streaming_response.create(
+                    model=model,
+                    voice=voice,
+                    input=text,
+                    instructions=instructions,
+                    response_format="pcm"  # Raw PCM for better streaming
+                ) as response:
+                    # Process streaming chunks
+                    buffer = bytearray()
+                    samples_per_frame = 480  # 20ms at 24kHz
+                    bytes_per_sample = 2     # int16 = 2 bytes
+                    frame_size = samples_per_frame * bytes_per_sample
+                    
+                    async for chunk in response.iter_bytes():
+                        if chunk:
+                            # Add to buffer
+                            buffer.extend(chunk)
+                            
+                            # Process complete frames
+                            while len(buffer) >= frame_size:
+                                # Extract a frame
+                                frame_data = buffer[:frame_size]
+                                del buffer[:frame_size]
+                                
+                                # Create an AudioFrame with OpenAI's sample rate
+                                input_frame = rtc.AudioFrame(
+                                    data=bytes(frame_data),
+                                    sample_rate=24000,
+                                    num_channels=1,
+                                    samples_per_channel=samples_per_frame
+                                )
+                                
+                                # Resample to target sample rate using LiveKit's resampler
+                                resampled_frames = resampler.push(input_frame)
+                                
+                                # Process each resampled frame
+                                for frame in resampled_frames:
+                                    # Convert to numpy for buffer manager
+                                    frame_data = frame.data
+                                    samples = np.frombuffer(frame_data, dtype=np.int16).astype(np.float32) / 32767.0
+                                    
+                                    # Write to file
+                                    tts_file.write(samples)
+                                    
+                                    # Calculate chunk duration
+                                    chunk_duration = len(samples) / target_sample_rate
+                                    
+                                    # Send chunk through buffer manager
+                                    sleep_time = await buffer_manager.send_chunk(samples, chunk_duration)
+                                    
+                                    # Sleep for the recommended duration
+                                    await asyncio.sleep(sleep_time)
+                    
+                    # Process any remaining data in buffer
+                    if buffer:
+                        # Pad to a complete frame if needed
+                        if len(buffer) % bytes_per_sample != 0:
+                            buffer.extend(b'\x00' * (bytes_per_sample - (len(buffer) % bytes_per_sample)))
+                        
+                        # Create final frame
+                        final_samples = len(buffer) // bytes_per_sample
+                        input_frame = rtc.AudioFrame(
+                            data=bytes(buffer),
+                            sample_rate=24000,
+                            num_channels=1,
+                            samples_per_channel=final_samples
+                        )
+                        
+                        # Resample and send
+                        final_frames = resampler.push(input_frame)
+                        for frame in final_frames:
+                            samples = np.frombuffer(frame.data, dtype=np.int16).astype(np.float32) / 32767.0
+                            tts_file.write(samples)
+                            chunk_duration = len(samples) / target_sample_rate
+                            await buffer_manager.send_chunk(samples, chunk_duration)
+                    
+                    # Flush the resampler
+                    flush_frames = resampler.flush()
+                    for frame in flush_frames:
+                        samples = np.frombuffer(frame.data, dtype=np.int16).astype(np.float32) / 32767.0
+                        tts_file.write(samples)
+                        chunk_duration = len(samples) / target_sample_rate
+                        await buffer_manager.send_chunk(samples, chunk_duration)
+                
+                logger.info(f"Finished streaming TTS to room {room_name}")
+                
+                # Wait for the audio source to finish playing everything
+                while audio_source.queued_duration > 0:
+                    await asyncio.sleep(0.1)
+                
+                logger.info(f"TTS playback completed for room {room_name}")
+                
+            finally:
+                # Clean up resources
+                try:
+                    if publication:
+                        await publication.unpublish()
+                        logger.info(f"TTS track unpublished from room {room_name}")
+                    if track:
+                        track.stop()
+                except Exception as e:
+                    logger.error(f"Error cleaning up TTS track: {e}")
+                
+                try:
+                    if audio_source:
+                        await audio_source.aclose()
+                        logger.info(f"TTS audio source closed for room {room_name}")
+                except Exception as e:
+                    logger.error(f"Error closing TTS audio source: {e}")
+        
+        # Store the TTS file info
+        audio_files[tts_id] = {
+            "data": None,  # We'll load this on demand
+            "sample_rate": target_sample_rate,
+            "file_path": tts_filepath
+        }
+        
+        return tts_id
+        
+    except Exception as e:
+        logger.error(f"Error streaming TTS to room: {e}")
         import traceback
         logger.error(traceback.format_exc())
         return False
@@ -390,6 +626,60 @@ async def leave_room(room_name: str):
         return {"status": "success"}
     except Exception as e:
         logger.error(f"Error leaving room: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/tts-stream")
+async def tts_stream(request: TTSRequest):
+    """Stream text-to-speech to a LiveKit room"""
+    try:
+        # Check if we're already connected to the room
+        if request.room_name not in active_rooms:
+            # Connect to the room
+            await connect_to_room(request.room_name, "tts-server")
+        
+        # Start streaming in a background task
+        tts_id = await stream_tts_to_room(
+            request.room_name,
+            request.text,
+            request.voice,
+            request.model,
+            request.instructions
+        )
+        
+        if not tts_id:
+            raise HTTPException(status_code=500, detail="Failed to stream TTS")
+        
+        return {
+            "status": "started",
+            "room_name": request.room_name,
+            "tts_id": tts_id,
+            "message": "TTS streaming started"
+        }
+    except Exception as e:
+        logger.error(f"Error starting TTS stream: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/stop-audio")
+async def stop_audio(request: PlaybackRequest):
+    """Stop audio playback in a LiveKit room"""
+    try:
+        if request.room_name not in active_rooms:
+            return {"status": "not_found"}
+        
+        room = active_rooms[request.room_name]
+        
+        # Find and stop any audio tracks published by the local participant
+        for publication in room.local_participant.tracks.values():
+            if publication.kind == "audio":
+                try:
+                    await publication.unpublish()
+                    logger.info(f"Stopped audio track in room {request.room_name}")
+                except Exception as e:
+                    logger.error(f"Error stopping audio track: {e}")
+        
+        return {"status": "stopped", "room_name": request.room_name}
+    except Exception as e:
+        logger.error(f"Error stopping audio: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Serve static files from the public directory
