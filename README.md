@@ -34,6 +34,8 @@ A simple web application that allows you to upload and stream audio files to Liv
    LIVEKIT_API_KEY=your-api-key
    LIVEKIT_API_SECRET=your-api-secret
    PORT=3001
+   OPENAI_API_KEY=api-key-here
+
    ```
 
 ### Running the Application
